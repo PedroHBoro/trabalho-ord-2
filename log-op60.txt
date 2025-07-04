@@ -1,0 +1,61 @@
+> Remoção da chave 29: Falha - Chave não encontrada.
+> Inserção da chave 144: Sucesso.
+> Busca pela chave 130: Chave não encontrada.
+> Inserção da chave 140: Sucesso.
+> Inserção da chave 8: Sucesso.
+> Inserção da chave 130: Sucesso.
+> Busca pela chave 24: Chave não encontrada.
+> Busca pela chave 57: Chave não encontrada.
+> Remoção da chave 140: Sucesso.
+> Inserção da chave 60: Sucesso.
+> Inserção da chave 27: Sucesso.
+> Remoção da chave 189: Falha - Chave não encontrada.
+> Busca pela chave 23: Chave não encontrada.
+> Remoção da chave 27: Sucesso.
+> Busca pela chave 9: Chave não encontrada.
+> Remoção da chave 58: Falha - Chave não encontrada.
+> Inserção da chave 190: Sucesso.
+> Inserção da chave 155: Sucesso.
+> Remoção da chave 24: Falha - Chave não encontrada.
+> Inserção da chave 71: Sucesso.
+> Inserção da chave 115: Sucesso.
+> Inserção da chave 174: Sucesso.
+> Busca pela chave 60: Chave encontrada no bucket 0.
+> Inserção da chave 197: Sucesso.
+> Remoção da chave 60: Sucesso.
+> Inserção da chave 51: Sucesso.
+> Inserção da chave 164: Sucesso.
+> Remoção da chave 71: Sucesso.
+> Inserção da chave 167: Sucesso.
+> Remoção da chave 8: Sucesso.
+> Inserção da chave 56: Sucesso.
+> Inserção da chave 57: Sucesso.
+> Remoção da chave 23: Falha - Chave não encontrada.
+> Inserção da chave 188: Sucesso.
+> Remoção da chave 152: Falha - Chave não encontrada.
+> Inserção da chave 23: Sucesso.
+> Remoção da chave 174: Sucesso.
+> Remoção da chave 7: Falha - Chave não encontrada.
+> Busca pela chave 140: Chave não encontrada.
+> Busca pela chave 8: Chave não encontrada.
+> Inserção da chave 152: Sucesso.
+> Remoção da chave 36: Falha - Chave não encontrada.
+> Busca pela chave 197: Chave encontrada no bucket 1.
+> Inserção da chave 7: Sucesso.
+> Inserção da chave 108: Sucesso.
+> Remoção da chave 9: Falha - Chave não encontrada.
+> Inserção da chave 63: Sucesso.
+> Remoção da chave 109: Falha - Chave não encontrada.
+> Remoção da chave 164: Sucesso.
+> Remoção da chave 56: Sucesso.
+> Inserção da chave 58: Sucesso.
+> Busca pela chave 155: Chave encontrada no bucket 5.
+> Inserção da chave 189: Sucesso.
+> Inserção da chave 109: Sucesso.
+> Inserção da chave 9: Sucesso.
+> Inserção da chave 24: Sucesso.
+> Remoção da chave 190: Sucesso.
+> Inserção da chave 29: Sucesso.
+> Inserção da chave 36: Sucesso.
+> Remoção da chave 63: Sucesso.
+As operações do arquivo op60.txt foram executadas com sucesso!

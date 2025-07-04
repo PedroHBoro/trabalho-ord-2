@@ -1,0 +1,33 @@
+----- Buckets -----
+Bucket 0 (Prof = 3):
+ContaChaves = 5
+Chaves = [152, 8, 24, 56, 144]
+
+Bucket 1 (Prof = 3):
+ContaChaves = 2
+Chaves = [9, 57, -1, -1, -1]
+
+Bucket 2 (Prof = 3):
+ContaChaves = 4
+Chaves = [27, 155, 51, 115, -1]
+
+Bucket 3 (Prof = 2):
+ContaChaves = 4
+Chaves = [190, 58, 174, 130, -1]
+
+Bucket 4 (Prof = 4):
+ContaChaves = 2
+Chaves = [164, 36, -1, -1, -1]
+
+Bucket 5 (Prof = 3):
+ContaChaves = 5
+Chaves = [7, 71, 63, 23, 167]
+
+Bucket 6 (Prof = 4):
+ContaChaves = 4
+Chaves = [140, 60, 188, 108, -1]
+
+Bucket 7 (Prof = 3):
+ContaChaves = 4
+Chaves = [29, 189, 109, 197, -1]
+

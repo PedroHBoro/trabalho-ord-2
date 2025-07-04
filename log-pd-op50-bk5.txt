@@ -1,0 +1,10 @@
+----- Diretório -----
+dir[0] = bucket[0]
+dir[1] = bucket[0]
+dir[2] = bucket[7]
+dir[3] = bucket[5]
+
+Profundidade = 2
+Tamanho atual = 4
+Total de buckets = 3
+

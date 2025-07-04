@@ -1,0 +1,23 @@
+----- Buckets -----
+Bucket 0 (Prof = 1):
+ContaChaves = 4
+Chaves = [144, 188, 108, 130, -1]
+
+Bucket 1 --> Removido
+
+Bucket 2 --> Removido
+
+Bucket 3 --> Removido
+
+Bucket 4 --> Removido
+
+Bucket 5 (Prof = 2):
+ContaChaves = 4
+Chaves = [167, 155, 51, 115, -1]
+
+Bucket 6 --> Removido
+
+Bucket 7 (Prof = 2):
+ContaChaves = 2
+Chaves = [197, 57, -1, -1, -1]
+
