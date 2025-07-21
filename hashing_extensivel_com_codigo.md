@@ -29,6 +29,47 @@ A "mágica" do hashing extensível está em como ele usa o diretório para geren
 
 A regra fundamental é: **pL ≤ pG**. Várias entradas no diretório podem apontar para o mesmo bucket. Isso acontece quando a profundidade local de um bucket é menor que a profundidade global.
 
+### Como Selecionar os 'x' Primeiros Bits com Operações Bitwise?
+
+A operação central para encontrar o índice no diretório é "considerar os 'x' primeiros bits do hash". Em Python, a maneira mais eficiente de fazer isso é com **operações bitwise (bit a bit)**, especificamente o operador **AND (`&`)** com uma **máscara**.
+
+A máscara é um número que tem `1`s nas posições dos bits que queremos manter e `0`s nas outras. Para criar uma máscara que seleciona os `x` bits da direita (os menos significativos), usamos a expressão `(1 << x) - 1`.
+
+-   `1 << x`: Desloca o bit `1` para a esquerda `x` vezes. Por exemplo, `1 << 4` resulta em `10000` em binário (16).
+-   `- 1`: Subtrair 1 desse número resulta em um número com `x` bits `1`. Por exemplo, `16 - 1` é `15`, que é `01111` em binário.
+
+#### Exemplo Prático:
+
+Vamos supor que nossa profundidade global (`pG`) é **4**, e o hash de uma chave é **179** (`10110011` em binário).
+
+```python
+# Valor de hash de exemplo
+hash_valor = 179 # Binário: 10110011
+
+# Queremos os 4 bits menos significativos (profundidade_global = 4)
+profundidade_global = 4
+
+# 1. Criar a máscara
+# (1 << 4) se torna 16 (binário: 10000)
+# 16 - 1 se torna 15 (binário: 01111)
+mascara = (1 << profundidade_global) - 1
+
+# 2. Aplicar a máscara com o operador AND para obter o índice
+indice = hash_valor & mascara
+
+# --- Verificação ---
+print(f"Valor do Hash: {hash_valor}  (Binário: {bin(hash_valor)})")
+print(f"Máscara:       {mascara}   (Binário: {bin(mascara)})")
+# A operação bitwise:
+#   10110011  (179)
+# & 00001111  (15)
+# ----------
+#   00000011  (3)
+print(f"Índice Resultante: {indice}    (Binário: {bin(indice)})")
+# O resultado é 3. Esse será o índice no diretório.
+```
+Essa operação é exatamente o que a função `_get_indice_diretorio` faz no exemplo de código a seguir.
+
 ### Exemplo de Estruturas em Python
 
 Vamos modelar as estruturas básicas em Python para ilustrar os conceitos.
