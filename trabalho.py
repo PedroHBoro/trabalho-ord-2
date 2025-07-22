@@ -20,17 +20,13 @@ def hashing(key: int, depth: int) -> int:
     return result
 
 class Bucket:
-    def __init__(self, localDepth: int = 0):
+    def __init__(self, bucketsArchive, rrn: int, localDepth: int = 0):
         self.__localDepth = localDepth
         self.__keyCounter = 0
         self.__keys = [-1]*TAM_MAX_BUCKET
+        self.__dat = bucketsArchive
+        self.__rrn = rrn
 
-    def isFull(self):
-        """
-        Verifica se o bucket está cheio
-        """
-        return self.__keyCounter == TAM_MAX_BUCKET
-    
     def search(self, key) -> tuple[bool, int, int]:
         """
         Retorna o resultado da busca (sucesso, índice, valor)
@@ -43,23 +39,20 @@ class Bucket:
         except:
             return False, -1, -1
         
-    def insert(self, key) -> bool:
+    def insert(self, key) -> 'Bucket':
         """ 
         Insere uma chave no bucket
         - Retorna True se a inserção for bem-sucedida
         - Retorna False se o bucket estiver cheio
         """
-        if self.isFull():
-            return False
-        
         for i in range(TAM_MAX_BUCKET):
             if self.__keys[i] == -1:
                 self.__keys[i] = key
                 self.__keyCounter += 1
-                return True
-        return False
-        
-    def remove(self, key) -> bool:
+                return self.__save()
+        return self.__divide() # Como reorganizar as chaves?
+
+    def remove(self, key) -> tuple[bool, 'Bucket']:
         """ 
         Remove uma chave do bucket
         - Retorna True se a remoção for bem-sucedida
@@ -69,42 +62,76 @@ class Bucket:
             if self.__keys[i] == key:
                 self.__keys[i] = -1
                 self.__keyCounter -= 1
-                return True
-        return False
-    
-    def divide(self) -> 'Bucket':
+                return True, self.__save()
+        return False, self
+
+    def __divide(self) -> 'Bucket':
         """
         Divide o bucket em dois, aumentando a profundidade local
         Retorna o novo bucket criado
         """
-        newBucket = Bucket(self.__localDepth + 1)
-        half = TAM_MAX_BUCKET // 2
-        
-        # Move metade das chaves para o novo bucket
-        for i in range(half, TAM_MAX_BUCKET):
-            if self.__keys[i] != -1:
-                newBucket.insert(self.__keys[i])
-                self.__keys[i] = -1
-                self.__keyCounter -= 1
-        
-        return newBucket
+        self.__localDepth += 1
+
+        self.__dat.seek(0, os.SEEK_END)
+        newRrn = self.__dat.tell()
+
+        newBucket = Bucket(bucketsArchive=self.__dat, rrn=newRrn, localDepth=self.__localDepth)
+
+        return newBucket.__save()
     
-    def info(self) -> tuple[int, int, list]:
+    def __save(self) -> 'Bucket':
         """
-        Retorna as informações do Bucket (profundidade, quantidade de chaves, lista de chaves)
+        Salva o estado do bucket no arquivo
         """
-        return self.__localDepth, self.__keyCounter, self.__keys
+
+        format = f'ii{TAM_MAX_BUCKET}i'
+        seekLocation = self.__rrn * BUCKET_SIZE_BYTES
+
+        self.__dat.seek(seekLocation)
+        self.__dat.write(struct.pack(format, self.__localDepth, self.__keyCounter, *self.__keys))
+
+        return self
 
 @dataclass
 class Ref:
     bucket: Bucket
 
-@dataclass
-class Node:
-    one: 'Node' | None = None
-    zero: 'Node' | None = None
-
 class Directory:
     def __init__(self, globalDepth: int = 0):
         self.__globalDepth = globalDepth
         self.__refs = [-1] * (2 ** globalDepth)
+        self.__dat = open(DIR_FILENAME, 'wb+')
+        self.__bucketsArchive = open(BUCKET_FILENAME, 'wb+')
+
+    def search(self, key: int) -> tuple[bool, Ref]:
+        """
+        Busca uma chave no diretório
+        Retorna (True, Ref) se encontrado, (False, None) caso contrário
+        """
+        pass
+
+    def insert(self, key: int) -> Ref:
+        """
+        Insere uma chave no diretório
+        Retorna uma referência ao bucket onde a chave foi inserida
+        """
+        pass
+
+    def remove(self, key: int) -> bool:
+        """
+        Remove uma chave do diretório
+        Retorna True se a remoção for bem-sucedida, False caso contrário
+        """
+        pass
+
+    def __save(self) -> 'Directory':
+        """
+        Salva o estado do diretório no arquivo
+        """
+        pass
+
+    def __load(self) -> 'Directory':
+        """
+        Carrega o estado do diretório do arquivo e os buckets associados
+        """
+        pass
