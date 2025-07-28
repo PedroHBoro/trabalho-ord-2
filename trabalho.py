@@ -11,7 +11,7 @@ def hashing(key: int, depth: int) -> int:
     result = 0
     mask = 1
     hashVal = key
-    for i in range(1, depth):
+    for i in range(depth):
         result = result << 1
         lowOrderBit = hashVal & mask
         result = result | lowOrderBit
@@ -43,8 +43,8 @@ class Bucket:
             return True, self, index
         except:
             return False, self, -1
-        
-    def insert(self, key) -> 'Bucket':
+
+    def insert(self, key) -> tuple[bool, 'Bucket']:
         """ 
         Insere uma chave no bucket
         """
@@ -52,8 +52,8 @@ class Bucket:
             if self.keys[i] == -1:
                 self.keys[i] = key
                 self.keyCounter += 1
-                return self.save()
-        return self  # Garante retorno do tipo Bucket mesmo se não inserir
+                return True, self.save()
+        return False, self
 
     def remove(self, key) -> tuple[bool, 'Bucket']:
         """ 
@@ -122,18 +122,21 @@ class Directory:
 
         return bucket
 
-    def search(self, key: int) -> tuple[bool, Bucket]:
+    def search(self, key: int) -> tuple[bool, Bucket | None]:
         """
         Busca uma chave no diretório.
         Retorna uma tupla (encontrado, bucket) onde encontrado é True se a chave foi localizada.
+        Se o bucket não for encontrado (ponteiro -1), retorna (False, None).
         """
         hash_val = hashing(key, self.globalDepth)
+
         bucket_rrn = self.refs[hash_val]
         if bucket_rrn == -1:
-            # Retorna um bucket "vazio" para manter o tipo
-            return False, Bucket(self.__bucketsArchive, -1, 0)
+            return False, None  # Retorna None em vez de um bucket fantasma
+            
         bucket = self._load_bucket(bucket_rrn)
         found, _, _ = bucket.search(key)
+
         return found, bucket
 
     def insert(self, key: int) -> bool:
@@ -145,11 +148,17 @@ class Directory:
         found, bucket = self.search(key)
         if found:
             return False
+        
+        # Se a busca não encontrou um bucket válido (ponteiro -1), a inserção falha.
+        if bucket is None:
+            return False
+
         if not bucket.isFull():
-            bucket.insert(key)
-            return True
+            return bucket.insert(key)[0]
+        
+        # Se o bucket está cheio, realiza o split e tenta novamente.
         self.splitBucket(bucket)
-        return self.insert(key)  # tenta novamente após split
+        return self.insert(key)
 
     def remove(self, key: int) -> bool:
         """
@@ -158,8 +167,10 @@ class Directory:
         Após remoção, tenta concatenar buckets amigos.
         """
         found, bucket = self.search(key)
-        if not found or not bucket:
+        # Se a chave não foi encontrada ou o bucket não existe (ponteiro -1), a remoção falha.
+        if not found or bucket is None:
             return False
+            
         success, _ = bucket.remove(key)
         if success:
             self.try_merge_buckets(bucket)
@@ -170,44 +181,45 @@ class Directory:
         Realiza o split de um bucket cheio, criando um novo bucket e redistribuindo as chaves.
         Atualiza as referências do diretório conforme a profundidade local.
         """
+        # 1. Dobra o diretório se a profundidade local atingiu a global.
         if bucket.localDepth == self.globalDepth:
             self.double()
-        old_rrn = bucket.rrn
-        bucket.localDepth += 1
+
+        # 2. Cria um novo bucket. A profundidade local de ambos (antigo e novo) é incrementada.
         new_bucket_rrn = self.numBuckets
-        new_bucket = Bucket(self.__bucketsArchive, new_bucket_rrn, bucket.localDepth)
         self.numBuckets += 1
+        
+        bucket.localDepth += 1
+        new_bucket = Bucket(self.__bucketsArchive, new_bucket_rrn, bucket.localDepth)
 
-        # Atualiza as referências do diretório corretamente
-        for i in range(len(self.refs)):
-            if self.refs[i] == old_rrn:
-                if ((i >> (bucket.localDepth - 1)) & 1):
-                    self.refs[i] = new_bucket_rrn
-                else:
-                    self.refs[i] = old_rrn
-
-        # Salva o estado limpo dos buckets
-        old_keys = [k for k in bucket.keys if k != -1]
-        bucket.keys = [-1]*TAM_MAX_BUCKET
+        # 3. Guarda as chaves antigas para redistribuição e limpa o bucket original.
+        old_keys = [key for key in bucket.keys if key != -1]
+        bucket.keys = [-1] * TAM_MAX_BUCKET
         bucket.keyCounter = 0
-        new_bucket.keys = [-1]*TAM_MAX_BUCKET
-        new_bucket.keyCounter = 0
+
+        # 4. Atualiza as referências no diretório.
+        # A máscara deve verificar o bit menos significativo do hash (índice do diretório),
+        # pois a função de hash reverte os bits da chave.
+        new_pattern_mask = 1
+        
+        for i in range(len(self.refs)):
+            if self.refs[i] == bucket.rrn:
+                if i & new_pattern_mask:
+                    self.refs[i] = new_bucket_rrn
+
+        # 5. Redistribui as chaves entre o bucket antigo e o novo.
+        # A decisão também se baseia no bit menos significativo do novo hash.
+        distinguishing_bit_mask = 1
+        for key in old_keys:
+            hash_val = hashing(key, bucket.localDepth)
+            if hash_val & distinguishing_bit_mask:
+                new_bucket.insert(key)
+            else:
+                bucket.insert(key)
+        
         bucket.save()
         new_bucket.save()
 
-        # Redistribui as chaves usando a profundidade LOCAL do bucket
-        for key in old_keys:
-            # Usa a profundidade local do bucket após o split
-            if ((key >> (bucket.localDepth - 1)) & 1):
-                target_bucket = new_bucket
-            else:
-                target_bucket = bucket
-            for i in range(TAM_MAX_BUCKET):
-                if target_bucket.keys[i] == -1:
-                    target_bucket.keys[i] = key
-                    target_bucket.keyCounter += 1
-                    target_bucket.save()
-                    break
         return self
 
     def double(self) -> 'Directory':
@@ -227,64 +239,55 @@ class Directory:
         Se possível, move todas as chaves para um bucket, marca o outro como inativo (localDepth = -1),
         atualiza as referências do diretório e reduz a profundidade local.
         """
-        if bucket.localDepth <= 1 or bucket.localDepth == -1:
-            return  # Não pode concatenar
-        
-        # Encontra o índice de um dos diretórios que aponta para este bucket
-        for idx, ref in enumerate(self.refs):
-            if ref == bucket.rrn:
-                bucket_index = idx
-                break
-        else:
-            return  # Não encontrado
-        
-        # Calcula o índice do bucket amigo (flip do bit mais significativo da profundidade local)
+        if bucket.localDepth <= 0: # Não pode concatenar se a profundidade já é 0 ou se está inativo
+            return
+
+        # 1. Encontra o índice do bucket amigo (buddy)
         mask = 1 << (bucket.localDepth - 1)
-        buddy_index = bucket_index ^ mask
+        bucket_hash_base = hashing(bucket.keys[0] if bucket.keyCounter > 0 else 0, bucket.localDepth)
+        
+        # Encontra um índice que aponta para o bucket atual
+        my_index = -1
+        for i, ref in enumerate(self.refs):
+            if ref == bucket.rrn:
+                my_index = i
+                break
+        if my_index == -1: return # Não deveria acontecer
+
+        buddy_index = my_index ^ mask
         buddy_rrn = self.refs[buddy_index]
 
-        if buddy_rrn == bucket.rrn or buddy_rrn == -1:
-            return  # Não há bucket amigo válido
-        
+        if buddy_rrn == bucket.rrn: return # Aponta para si mesmo, não tem amigo
+
         buddy = self._load_bucket(buddy_rrn)
-        if buddy.localDepth != bucket.localDepth or buddy.localDepth == -1:
-            return  # Só pode juntar se profundidade local igual e ambos ativos
-        
-        # Soma das chaves
-        keys_bucket = [k for k in bucket.keys if k != -1]
-        keys_buddy = [k for k in buddy.keys if k != -1]
-        if len(keys_bucket) + len(keys_buddy) > TAM_MAX_BUCKET:
-            return  # Não cabe
-        
-        # Junta as chaves no bucket amigo (pode ser qualquer um)
-        merged_keys = keys_bucket + keys_buddy
 
-        # Limpa ambos
-        bucket.keys = [-1]*TAM_MAX_BUCKET
-        bucket.keyCounter = 0
-        buddy.keys = [-1]*TAM_MAX_BUCKET
-        buddy.keyCounter = 0
+        # 2. Verifica as condições de fusão
+        if buddy.localDepth != bucket.localDepth:
+            return
 
-        # Coloca as chaves no buddy
-        for i, k in enumerate(merged_keys):
-            buddy.keys[i] = k
-        buddy.keyCounter = len(merged_keys)
+        if bucket.keyCounter + buddy.keyCounter > TAM_MAX_BUCKET:
+            return # Não cabe
+
+        # 3. Executa a fusão: move chaves para o buddy e desativa o bucket atual
+        for key in bucket.keys:
+            if key != -1:
+                buddy.insert(key)
+        
         buddy.localDepth -= 1
+        bucket.localDepth = -1 # Marca como inativo
+        bucket.keyCounter = 0
+        bucket.keys = [-1] * TAM_MAX_BUCKET
+
+        bucket.save()
         buddy.save()
 
-        # Marca bucket como inativo
-        bucket.localDepth = -1
-        bucket.keyCounter = 0
-        bucket.save()
-
-        # Atualiza referências do diretório
+        # 4. Atualiza as referências do diretório
+        # Todos que apontavam para o bucket antigo agora apontam para o buddy
         for i in range(len(self.refs)):
-            if self.refs[i] == bucket.rrn or self.refs[i] == buddy.rrn:
-                # Se o bit mais significativo da profundidade local agora for 0, aponta para buddy
-                if ((i >> buddy.localDepth) & 1) == ((buddy_index >> buddy.localDepth) & 1):
-                    self.refs[i] = buddy.rrn
+            if self.refs[i] == bucket.rrn:
+                self.refs[i] = buddy.rrn
 
-        # Após merge, pode ser possível reduzir a profundidade global
+        # 5. Tenta reduzir o diretório
         self.try_shrink_directory()
 
     def try_shrink_directory(self):
@@ -338,6 +341,13 @@ class Directory:
                 self.refs.append(struct.unpack('i', f.read(4))[0])
         return self
 
+    def close(self):
+        """
+        Fecha o arquivo de buckets.
+        """
+        if self.__bucketsArchive and not self.__bucketsArchive.closed:
+            self.__bucketsArchive.close()
+
 
 class Hashing():
     def __init__(self):
@@ -349,11 +359,17 @@ class Hashing():
     def insert(self, key: int) -> bool:
         return self.directory.insert(key)
 
-    def search(self, key: int) -> tuple[bool, Bucket]:
+    def search(self, key: int) -> tuple[bool, Bucket | None]:
         return self.directory.search(key)
 
     def remove(self, key: int) -> bool:
         return self.directory.remove(key)
+
+    def close(self):
+        """
+        Fecha os arquivos abertos.
+        """
+        self.directory.close()
 
     def execute(self, command: str, key: int) -> bool:
         if command == "i":
@@ -403,22 +419,25 @@ class Hashing():
     
 def main():
     hashing = Hashing()
-    flag = argv[1]
+    try:
+        flag = argv[1]
 
-    if flag == "-pb":
-        hashing.print_buckets()
+        if flag == "-pb":
+            hashing.print_buckets()
 
-    elif flag == "-pd":
-        hashing.print_directory()
+        elif flag == "-pd":
+            hashing.print_directory()
 
-    elif flag == "-e":
-        opAchiveName = argv[2]
-        with open(opAchiveName, 'r') as operations:
-            for line in operations:
-                command, key = line.strip().split()
-                key = int(key)
-                hashing.execute(command, key)
-        hashing.save()
+        elif flag == "-e":
+            opAchiveName = argv[2]
+            with open(opAchiveName, 'r') as operations:
+                for line in operations:
+                    command, key = line.strip().split()
+                    key = int(key)
+                    hashing.execute(command, key)
+            hashing.save()
+    finally:
+        hashing.close()
 
 if __name__ == "__main__":
     main()
