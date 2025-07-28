@@ -1,4 +1,4 @@
-import sys
+from sys import argv
 import struct
 import os
 
@@ -23,14 +23,14 @@ class Bucket:
         self.rrn = rrn
         self.localDepth = localDepth
         self.keys = [-1]*TAM_MAX_BUCKET
-        self.__keyCounter = 0
+        self.keyCounter = 0
         self.__dat = bucketsArchive
 
     def isFull(self) -> bool:
         """
         Verifica se o bucket está cheio
         """
-        return self.__keyCounter >= TAM_MAX_BUCKET
+        return self.keyCounter >= TAM_MAX_BUCKET
 
     def search(self, key) -> tuple[bool, 'Bucket', int]:
         """
@@ -51,8 +51,9 @@ class Bucket:
         for i in range(TAM_MAX_BUCKET):
             if self.keys[i] == -1:
                 self.keys[i] = key
-                self.__keyCounter += 1
+                self.keyCounter += 1
                 return self.save()
+        return self  # Garante retorno do tipo Bucket mesmo se não inserir
 
     def remove(self, key) -> tuple[bool, 'Bucket']:
         """ 
@@ -63,36 +64,28 @@ class Bucket:
         for i in range(TAM_MAX_BUCKET):
             if self.keys[i] == key:
                 self.keys[i] = -1
-                self.__keyCounter -= 1
+                self.keyCounter -= 1
                 return True, self.save()
         return False, self
-    
-    def set_key_counter(self, value: int):
-        """
-        Define o contador de chaves com segurança
-        """
-        if value < 0 or value > TAM_MAX_BUCKET:
-            raise ValueError("Contador de chaves inválido")
-        self.__keyCounter = value
 
     def save(self) -> 'Bucket':
         """
         Salva o estado do bucket no arquivo
         """
-
         format = f'ii{TAM_MAX_BUCKET}i'
         seekLocation = self.rrn * BUCKET_SIZE_BYTES
 
         self.__dat.seek(seekLocation)
-        self.__dat.write(struct.pack(format, self.localDepth, self.__keyCounter, *self.keys))
+        self.__dat.write(struct.pack(format, self.localDepth, self.keyCounter, *self.keys))
 
         return self
 
+
 class Directory:
-    def __init__(self, globalDepth: int = 1):
-        self.__globalDepth = globalDepth
-        self.__refs = []
-        self.__numBuckets = 0
+    def __init__(self):
+        self.globalDepth = 0
+        self.refs = []
+        self.numBuckets = 0
 
         # Abre ou cria o arquivo de buckets
         if not os.path.exists(BUCKET_FILENAME):
@@ -101,13 +94,13 @@ class Directory:
         
         # Inicializa com um bucket
         if os.path.getsize(BUCKET_FILENAME) == 0:
-            bucket = Bucket(self.__bucketsArchive, 0, localDepth=1)
+            bucket = Bucket(self.__bucketsArchive, 0, localDepth=0)
             bucket.save()
-            self.__refs = [0] * (2 ** self.__globalDepth)
-            self.__numBuckets = 1
+            self.refs = [0] * (2 ** self.globalDepth)
+            self.numBuckets = 1
         else:
-            self.__refs = [0] * (2 ** self.__globalDepth)
-            self.__numBuckets = os.path.getsize(BUCKET_SIZE_BYTES) // BUCKET_SIZE_BYTES
+            self.refs = [0] * (2 ** self.globalDepth)
+            self.numBuckets = os.path.getsize(BUCKET_FILENAME) // BUCKET_SIZE_BYTES
 
     def _load_bucket(self, rrn: int) -> Bucket:
         """
@@ -116,13 +109,17 @@ class Directory:
         """
         self.__bucketsArchive.seek(rrn * BUCKET_SIZE_BYTES)
         data = self.__bucketsArchive.read(BUCKET_SIZE_BYTES)
+
         if not data or len(data) < BUCKET_SIZE_BYTES:
             raise Exception("Bucket não encontrado")
+        
         format = f'ii{TAM_MAX_BUCKET}i'
         localDepth, keyCounter, *keys = struct.unpack(format, data)
+
         bucket = Bucket(self.__bucketsArchive, rrn, localDepth)
         bucket.keys = list(keys)
-        bucket.set_key_counter(keyCounter)
+        bucket.keyCounter = keyCounter
+
         return bucket
 
     def search(self, key: int) -> tuple[bool, Bucket]:
@@ -130,8 +127,8 @@ class Directory:
         Busca uma chave no diretório.
         Retorna uma tupla (encontrado, bucket) onde encontrado é True se a chave foi localizada.
         """
-        hash_val = hashing(key, self.__globalDepth)
-        bucket_rrn = self.__refs[hash_val]
+        hash_val = hashing(key, self.globalDepth)
+        bucket_rrn = self.refs[hash_val]
         if bucket_rrn == -1:
             # Retorna um bucket "vazio" para manter o tipo
             return False, Bucket(self.__bucketsArchive, -1, 0)
@@ -173,41 +170,55 @@ class Directory:
         Realiza o split de um bucket cheio, criando um novo bucket e redistribuindo as chaves.
         Atualiza as referências do diretório conforme a profundidade local.
         """
-        if bucket.localDepth == self.__globalDepth:
+        if bucket.localDepth == self.globalDepth:
             self.double()
         old_rrn = bucket.rrn
         bucket.localDepth += 1
-        new_bucket_rrn = self.__numBuckets
+        new_bucket_rrn = self.numBuckets
         new_bucket = Bucket(self.__bucketsArchive, new_bucket_rrn, bucket.localDepth)
-        self.__numBuckets += 1
+        self.numBuckets += 1
 
-        # Atualiza referências do diretório
-        for i in range(len(self.__refs)):
-            if self.__refs[i] == old_rrn:
-                if (i >> (bucket.localDepth - 1)) & 1:
-                    self.__refs[i] = new_bucket_rrn
+        # Atualiza as referências do diretório corretamente
+        for i in range(len(self.refs)):
+            if self.refs[i] == old_rrn:
+                if ((i >> (bucket.localDepth - 1)) & 1):
+                    self.refs[i] = new_bucket_rrn
+                else:
+                    self.refs[i] = old_rrn
 
-        # Redistribui as chaves
+        # Salva o estado limpo dos buckets
         old_keys = [k for k in bucket.keys if k != -1]
         bucket.keys = [-1]*TAM_MAX_BUCKET
-        bucket.set_key_counter(0)
+        bucket.keyCounter = 0
         new_bucket.keys = [-1]*TAM_MAX_BUCKET
-        new_bucket.set_key_counter(0)
+        new_bucket.keyCounter = 0
         bucket.save()
         new_bucket.save()
+
+        # Redistribui as chaves usando a profundidade LOCAL do bucket
         for key in old_keys:
-            self.insert(key)
+            # Usa a profundidade local do bucket após o split
+            if ((key >> (bucket.localDepth - 1)) & 1):
+                target_bucket = new_bucket
+            else:
+                target_bucket = bucket
+            for i in range(TAM_MAX_BUCKET):
+                if target_bucket.keys[i] == -1:
+                    target_bucket.keys[i] = key
+                    target_bucket.keyCounter += 1
+                    target_bucket.save()
+                    break
         return self
 
     def double(self) -> 'Directory':
         """
         Dobra a profundidade global do diretório e duplica as referências dos buckets.
         """
-        self.__globalDepth += 1
+        self.globalDepth += 1
         newRefs = []
-        for ref in self.__refs:
+        for ref in self.refs:
             newRefs.extend([ref, ref])
-        self.__refs = newRefs
+        self.refs = newRefs
         return self
 
     def try_merge_buckets(self, bucket: Bucket):
@@ -220,7 +231,7 @@ class Directory:
             return  # Não pode concatenar
         
         # Encontra o índice de um dos diretórios que aponta para este bucket
-        for idx, ref in enumerate(self.__refs):
+        for idx, ref in enumerate(self.refs):
             if ref == bucket.rrn:
                 bucket_index = idx
                 break
@@ -230,7 +241,7 @@ class Directory:
         # Calcula o índice do bucket amigo (flip do bit mais significativo da profundidade local)
         mask = 1 << (bucket.localDepth - 1)
         buddy_index = bucket_index ^ mask
-        buddy_rrn = self.__refs[buddy_index]
+        buddy_rrn = self.refs[buddy_index]
 
         if buddy_rrn == bucket.rrn or buddy_rrn == -1:
             return  # Não há bucket amigo válido
@@ -250,28 +261,28 @@ class Directory:
 
         # Limpa ambos
         bucket.keys = [-1]*TAM_MAX_BUCKET
-        bucket.set_key_counter(0)
+        bucket.keyCounter = 0
         buddy.keys = [-1]*TAM_MAX_BUCKET
-        buddy.set_key_counter(0)
+        buddy.keyCounter = 0
 
         # Coloca as chaves no buddy
         for i, k in enumerate(merged_keys):
             buddy.keys[i] = k
-        buddy.set_key_counter(len(merged_keys))
+        buddy.keyCounter = len(merged_keys)
         buddy.localDepth -= 1
         buddy.save()
 
         # Marca bucket como inativo
         bucket.localDepth = -1
-        bucket.set_key_counter(0)
+        bucket.keyCounter = 0
         bucket.save()
 
         # Atualiza referências do diretório
-        for i in range(len(self.__refs)):
-            if self.__refs[i] == bucket.rrn or self.__refs[i] == buddy.rrn:
+        for i in range(len(self.refs)):
+            if self.refs[i] == bucket.rrn or self.refs[i] == buddy.rrn:
                 # Se o bit mais significativo da profundidade local agora for 0, aponta para buddy
                 if ((i >> buddy.localDepth) & 1) == ((buddy_index >> buddy.localDepth) & 1):
-                    self.__refs[i] = buddy.rrn
+                    self.refs[i] = buddy.rrn
 
         # Após merge, pode ser possível reduzir a profundidade global
         self.try_shrink_directory()
@@ -282,17 +293,17 @@ class Directory:
         """
         min_local = min(
             self._load_bucket(ref).localDepth
-            for ref in set(self.__refs)
+            for ref in set(self.refs)
             if ref != -1 and self._load_bucket(ref).localDepth != -1
         )
         
-        while self.__globalDepth > 1 and min_local < self.__globalDepth:
-            self.__globalDepth -= 1
-            self.__refs = self.__refs[: 2 ** self.__globalDepth]
+        while self.globalDepth > 1 and min_local < self.globalDepth:
+            self.globalDepth -= 1
+            self.refs = self.refs[: 2 ** self.globalDepth]
             
             min_local = min(
                 self._load_bucket(ref).localDepth
-                for ref in set(self.__refs)
+                for ref in set(self.refs)
                 if ref != -1 and self._load_bucket(ref).localDepth != -1
             )
 
@@ -302,8 +313,8 @@ class Directory:
         Armazena a profundidade global e os RRNs dos buckets.
         """
         with open(DIR_FILENAME, 'wb') as f:
-            f.write(struct.pack('i', self.__globalDepth))
-            for ref in self.__refs:
+            f.write(struct.pack('i', self.globalDepth))
+            for ref in self.refs:
                 f.write(struct.pack('i', ref))
         return self
 
@@ -313,8 +324,91 @@ class Directory:
         Recupera a profundidade global e o vetor de RRNs dos buckets.
         """
         with open(DIR_FILENAME, 'rb') as f:
-            self.__globalDepth = struct.unpack('i', f.read(4))[0]
-            self.__refs = []
-            for _ in range(2 ** self.__globalDepth):
-                self.__refs.append(struct.unpack('i', f.read(4))[0])
+            self.globalDepth = struct.unpack('i', f.read(4))[0]
+            self.refs = []
+            for _ in range(2 ** self.globalDepth):
+                self.refs.append(struct.unpack('i', f.read(4))[0])
         return self
+
+
+class Hashing():
+    def __init__(self):
+        if os.path.exists(DIR_FILENAME):
+            self.directory = Directory().load()
+        else:
+            self.directory = Directory()
+
+    def insert(self, key: int) -> bool:
+        return self.directory.insert(key)
+
+    def search(self, key: int) -> tuple[bool, Bucket]:
+        return self.directory.search(key)
+
+    def remove(self, key: int) -> bool:
+        return self.directory.remove(key)
+
+    def execute(self, command: str, key: int) -> bool:
+        if command == "i":
+            success = self.insert(key)
+            print(f"Inserção da chave {key}: {'Sucesso' if success else 'Falha - Chave duplicada'}.")
+            return success
+        elif command == "b":
+            success, bucket = self.search(key)
+            print(f"Busca pela chave {key}: {f'Chave encontrada no bucket {bucket.rrn}' if success else 'Chave não encontrada'}.")
+            return success
+        elif command == "r":
+            success = self.remove(key)
+            print(f"Remoção da chave {key}: {'Sucesso' if success else 'Falha - Chave não encontrada'}.")
+            return success
+        else:
+            return False
+        
+    def print_directory(self):
+        print("----- Diretório -----")
+        for index, ref in enumerate(self.directory.refs):
+            print(f"dir[{index}] = bucket({ref})")
+
+        print(
+            f"\nProfundidade = {self.directory.globalDepth}\n"
+            f"Tamanho atual = {len(self.directory.refs)}\n"
+            f"Total de buckets = {self.directory.numBuckets}\n"
+        )
+
+    def print_buckets(self):
+        print("----- Buckets -----")
+        for i in self.directory.refs:
+            if i != -1:
+                bucket = self.directory._load_bucket(i)
+                print(
+                    f"\nBucket {bucket.rrn} (prof = {bucket.localDepth})\n"
+                    f"Conta_chaves = {bucket.keyCounter}\n"
+                    f"Chaves = {bucket.keys}\n"
+                )
+            else:
+                print(f"Bucket -- Removido")
+
+    def save(self) -> 'Hashing':
+        self.directory.save()
+        return self
+    
+def main():
+    hashing = Hashing()
+    flag = argv[1]
+
+    if flag == "-pb":
+        hashing.print_buckets()
+
+    elif flag == "-pd":
+        hashing.print_directory()
+
+    elif flag == "-e":
+        opAchiveName = argv[2]
+        with open(opAchiveName, 'r') as operations:
+            for line in operations:
+                command, key = line.strip().split()
+                key = int(key)
+                hashing.execute(command, key)
+        hashing.save()
+
+if __name__ == "__main__":
+    main()
