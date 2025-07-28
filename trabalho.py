@@ -307,6 +307,14 @@ class Directory:
                 if ref != -1 and self._load_bucket(ref).localDepth != -1
             )
 
+    def list_buckets(self) -> list[Bucket]:
+        """
+        Lista todos os buckets no diretório.
+        Retorna uma lista de instâncias de Bucket.
+        """
+        bucketRRNs = set(self.refs)
+        return [self._load_bucket(rrn) for rrn in bucketRRNs if rrn != -1]
+
     def save(self) -> 'Directory':
         """
         Salva o estado do diretório no arquivo especificado por DIR_FILENAME.
@@ -375,17 +383,19 @@ class Hashing():
         )
 
     def print_buckets(self):
+        buckets = self.directory.list_buckets()
         print("----- Buckets -----")
-        for i in self.directory.refs:
-            if i != -1:
-                bucket = self.directory._load_bucket(i)
-                print(
-                    f"\nBucket {bucket.rrn} (prof = {bucket.localDepth})\n"
-                    f"Conta_chaves = {bucket.keyCounter}\n"
-                    f"Chaves = {bucket.keys}\n"
-                )
-            else:
-                print(f"Bucket -- Removido")
+
+        if not buckets:
+            print("Nenhum bucket encontrado.")
+            return
+
+        for bucket in buckets:
+            print(
+                f"\nBucket {bucket.rrn} (prof = {bucket.localDepth})\n"
+                f"Conta_chaves = {bucket.keyCounter}\n"
+                f"Chaves = {bucket.keys}\n"
+            )
 
     def save(self) -> 'Hashing':
         self.directory.save()
